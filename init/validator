@@ -1,0 +1,55 @@
+#!/bin/sh
+# Description   : This is a pseudo "init" script, which allows Validator to be run in a shared environment that is not tied to one user's SSH session.  WARNING: this shared web server approach does not have any sort of access control around it; anyone who can connect to the server and knows the port would have access.  The script allows you to start, stop and check status of the Validator REST server.  To automatically start and stop Validator on boot and shutdown, this script should be placed in /etc/init.d/, and respective "K**" and "S**" symlinks should be created in the desired runlevel directory (e.g. /etc/init.d/rc3.d).  The WD variable must be set to the path of the Validator directory.
+
+
+
+#The WD variable must be set to the path where the Validator directory resides on the server:
+WD=/validator
+BIN=$WD/runValidator.sh
+test -x $BIN || { printf "%s\n" "$BIN is not installed."; 
+	if [ "$1" = "stop" ]; then exit 0;
+	else exit 5; fi; }
+
+pidCheck()
+{
+PID=`/bin/ps aux | /usr/bin/grep com.novell.nccd.validator.RESTServer | /usr/bin/sed '/grep/d' | /usr/bin/awk '{print $2}'`
+}
+
+case "$1" in
+    start)
+        pidCheck
+        if [ -z $PID ]; then
+          printf "%s\n" "Starting Validator REST server..."
+          cd $WD
+          nohup $BIN 2> /dev/null &
+          sleep 2
+          pidCheck
+          printf "%s\n" "PID: $PID"
+        else
+          printf "%s\n" "Validator REST server is already running (PID: $PID)."
+        fi
+	;;
+    stop)
+        pidCheck
+        if [ -z $PID ]; then
+          printf "%s\n" "Validator REST server is not running."
+        else
+	  printf "%s\n" "Stopping Validator REST server (PID: $PID)..."
+          kill $PID
+          printf "%s\n" "Done."
+        fi
+	;;
+    status)
+	cd $WD
+        pidCheck
+        if [ -z $PID ]; then
+          printf "%s\n" "Validator REST server is not running."
+        else
+          printf "%s\n" "Validator REST server is running (PID: $PID)."
+        fi
+	;;
+    *)
+	echo "Usage: $0 {start|stop|status}"
+	exit 1
+	;;
+esac
