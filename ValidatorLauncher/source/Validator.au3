@@ -14,7 +14,7 @@
 
 ;preferences
 $product = "Launcher for NetIQ Validator"
-$version = "v0.8.3, 2013-11-08"
+$version = "v0.9.1, 2014-08-14"
 $author = "Lothar Haeger, lothar.haeger@is4it.de"
 
 $serv_title = "Validator for Identity Manager Service"
@@ -22,7 +22,18 @@ $serv_window = $serv_title
 $propsfile = 'config\validator.properties'
 $licfile = 'config\license.dat'
 $tests_default = "tests"
-$base_url = PropsRead($propsfile, "MAIN_URL")
+$base_url = StringRegExpReplace(PropsRead($propsfile, "MAIN_URL"),"/validator$","")
+
+If StringRegExp($base_url, ".*/validator$") = 1 Then
+	$validator_version = 1.3
+	$base_url = StringRegExpReplace($base_url,"/validator$","")
+	$css_url = $base_url & "/validator/css/validatorStyle.css"
+	$classpath = "lib/*;lib/ext/*"
+Else
+	$validator_version = 1.2
+	$css_url = $base_url & "/validator/css/blitzer/validator.css"
+	$classpath = "lib/*;lib/ext/*;lib/enc/*;lib/jldap/*;lib/json/*;lib/junit/*;lib/mysql/*;lib/mssql/*;lib/rest/*;lib/ssl/*;lib/oracle10g/*;lib/jasperreport/*;lib/userapp/*"
+EndIf
 
 $inifile = StringRegExpReplace(@ScriptFullPath,"^(.*)\..*?$","$1.ini")
 $browser = IniRead($inifile,"Settings", "Browser", "")
@@ -64,7 +75,7 @@ Func start_server()
 	TrayTip("", "Starting Validator service...", 1)
 
 	; check if the validator service is already running
-	$css_size = InetGetSize($base_url & "/validator/css/blitzer/validator.css",1)
+	$css_size = InetGetSize($css_url,1)
 	If Not $css_size = 0 Then
 		MsgBox(48,$product,'Seems like the Validator service is already running. Please stop it and try again')
 		Exit
@@ -73,7 +84,7 @@ Func start_server()
 	$options = ""
 	If $debug = "true" Then $options = "debug"
 	If FileExists($license) Then FileCopy($license, @ScriptDir & '\' & $licfile, 1)
-	$serv_pid = Run('jre/bin/java.exe -cp lib/*;lib/ext/*;lib/enc/*;lib/jldap/*;lib/json/*;lib/junit/*;lib/mysql/*;lib/mssql/*;lib/rest/*;lib/ssl/*;lib/oracle10g/*;lib/jasperreport/*;lib/userapp/* -Dsun.net.httpserver.idleInterval="3600" com.novell.nccd.validator.RESTServer ' & $options, "", @SW_HIDE)
+	$serv_pid = Run('jre\bin\java.exe -cp ' & $classpath & ' -Dsun.net.httpserver.idleInterval="3600" com.novell.nccd.validator.RESTServer ' & $options, "", @SW_HIDE)
 	$serv_window = ProcessGetHandle($serv_pid, @ScriptDir & "\jre\bin\java.exe", 5)
 	WinSetTitle($serv_window, "", $serv_title)
 	If $hide_console = "false" Then	
@@ -117,6 +128,15 @@ Func start_client()
 	EndIf
 EndFunc
 
+Func start_runner()
+	$url = StringRegExpReplace($base_url,"\d\.\d\.\d\.\d","localhost") & "/runner"
+	If FileExists($browser) Then
+		ShellExecute($browser, $url)	
+	Else
+		ShellExecute($url)
+	EndIf
+EndFunc
+
 Func prefs_dialog()
 	$tests = PropsRead($propsfile, "TESTS_LOC")
 	$new_tests = $tests
@@ -149,7 +169,7 @@ Func prefs_dialog()
 		GUICtrlSetState($select, $GUI_DISABLE)
 		GUICtrlSetState($input, $GUI_DISABLE)
 	EndIf
-	If $license = "" Then 
+	If $license = $licfile Or $license = "" Then 
 		GUICtrlSetState($lic_chk, $GUI_CHECKED)
 		GUICtrlSetState($lic_sel, $GUI_DISABLE)
 		GUICtrlSetState($lic_txt, $GUI_DISABLE)
@@ -208,7 +228,7 @@ Func prefs_dialog()
 				EndIf
 			Case $msg2[0] = $lic_chk
 				If GUICtrlRead($lic_chk) = $GUI_CHECKED Then
-					$license = ""
+					$license = $licfile
 					GUICtrlSetData ($lic_txt, $licfile)
 					GUICtrlSetState($lic_txt, $GUI_DISABLE)
 					GUICtrlSetState($lic_sel, $GUI_DISABLE)
@@ -316,6 +336,7 @@ EndIf
 ;build tray menu
 Opt("TrayMenuMode",1+2)
 $runvalitem	= TrayCreateItem("Open Validator")
+$runrunitem	= TrayCreateItem("Open Runner")
 $consitem	= TrayCreateItem("Start Service")
 TrayCreateItem("")
 $prefsitem	= TrayCreateItem("Preferences")
@@ -341,6 +362,7 @@ While 1
 	If $msg <> 0 Then
 		If WinExists($serv_window,"") Then
 			TrayItemSetState($runvalitem,$TRAY_ENABLE)
+			TrayItemSetState($runrunitem,$TRAY_ENABLE)
 			$s_state= WinGetState($serv_window,"")
 			If BitAND($s_state, 2) Then
 				TrayItemSetText($consitem,"Hide Console")
@@ -349,12 +371,15 @@ While 1
 			EndIf
 		Else
 			TrayItemSetState($runvalitem,$TRAY_DISABLE)
+			TrayItemSetState($runrunitem,$TRAY_DISABLE)
 			TrayItemSetText($consitem,"Start Service")
 		EndIf
 	EndIf
 	Select
 		Case $msg = $runvalitem
 			start_client()
+		Case $msg = $runrunitem
+			start_runner()
 		Case $msg = $consitem
 			If TrayItemGetText($consitem) = "Show Console" Then
 				WinSetState($serv_window,"",@SW_SHOW)
