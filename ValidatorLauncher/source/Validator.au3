@@ -14,23 +14,28 @@
 
 ;preferences
 $product = "Launcher for NetIQ Validator"
-$version = "v0.9.1, 2014-08-14"
-$author = "Lothar Haeger, lothar.haeger@is4it.de"
+$version = "v0.9.2, 2015-09-03"
+$author  = "Lothar Haeger, lothar.haeger@is4it.de"
 
-$serv_title = "Validator for Identity Manager Service"
-$serv_window = $serv_title
-$propsfile = 'config\validator.properties'
-$licfile = 'config\license.dat'
+$serv_title    = "Validator for Identity Manager Service"
+$serv_window   = $serv_title
+$propsfile     = 'config\validator.properties'
+$licfile       = 'config\license.dat'
 $tests_default = "tests"
-$base_url = StringRegExpReplace(PropsRead($propsfile, "MAIN_URL"),"/validator$","")
+$base_url      = PropsRead($propsfile, "MAIN_URL")
+$scheduler_url = PropsRead($propsfile, "MAIN_SCHEDULER_URL")
 
 If StringRegExp($base_url, ".*/validator$") = 1 Then
-	$validator_version = 1.3
+	if $scheduler_url = "" Then
+		$validator_version = "1.3"
+	Else
+		$validator_version = "1.4"
+	EndIf
 	$base_url = StringRegExpReplace($base_url,"/validator$","")
 	$css_url = $base_url & "/validator/css/validatorStyle.css"
 	$classpath = "lib/*;lib/ext/*"
 Else
-	$validator_version = 1.2
+	$validator_version = "1.2"
 	$css_url = $base_url & "/validator/css/blitzer/validator.css"
 	$classpath = "lib/*;lib/ext/*;lib/enc/*;lib/jldap/*;lib/json/*;lib/junit/*;lib/mysql/*;lib/mssql/*;lib/rest/*;lib/ssl/*;lib/oracle10g/*;lib/jasperreport/*;lib/userapp/*"
 EndIf
@@ -130,6 +135,15 @@ EndFunc
 
 Func start_runner()
 	$url = StringRegExpReplace($base_url,"\d\.\d\.\d\.\d","localhost") & "/runner"
+	If FileExists($browser) Then
+		ShellExecute($browser, $url)	
+	Else
+		ShellExecute($url)
+	EndIf
+EndFunc
+
+Func start_scheduler()
+	$url = StringRegExpReplace($scheduler_url,"\d\.\d\.\d\.\d","localhost")
 	If FileExists($browser) Then
 		ShellExecute($browser, $url)	
 	Else
@@ -244,7 +258,7 @@ Func prefs_dialog()
 				Else
 					$lpath = @ScriptDir
 				EndIf
-				$new_license = FileOpenDialog("Select License File...", $lpath & "\", "Validator Licenses (*.dat)", 1 + 4)
+				$new_license = FileOpenDialog("Select License File...", $lpath & "\", "Validator Licenses (*.dat;*.lic)|All Files (*.*)", 1 + 4)
 				If StringLen($new_license) > 0 And FileExists($new_license) Then 
 					$license = $new_license
 					GUICtrlSetData ($lic_txt, $license)
@@ -335,14 +349,15 @@ EndIf
 
 ;build tray menu
 Opt("TrayMenuMode",1+2)
-$runvalitem	= TrayCreateItem("Open Validator")
-$runrunitem	= TrayCreateItem("Open Runner")
-$consitem	= TrayCreateItem("Start Service")
+$runvalitem 	= TrayCreateItem("Open Validator")
+$runrunitem	    = TrayCreateItem("Open Runner")
+$runscheditem	= TrayCreateItem("Open Scheduler")
+$consitem	    = TrayCreateItem("Start Service")
 TrayCreateItem("")
-$prefsitem	= TrayCreateItem("Preferences")
-$aboutitem	= TrayCreateItem("About")
+$prefsitem	    = TrayCreateItem("Preferences")
+$aboutitem	    = TrayCreateItem("About")
 TrayCreateItem("")
-$exititem	= TrayCreateItem("Exit")
+$exititem	    = TrayCreateItem("Exit")
 TrayItemSetState($runvalitem,$TRAY_DEFAULT)
 TraySetToolTip($product)
 TraySetState()
@@ -362,7 +377,16 @@ While 1
 	If $msg <> 0 Then
 		If WinExists($serv_window,"") Then
 			TrayItemSetState($runvalitem,$TRAY_ENABLE)
-			TrayItemSetState($runrunitem,$TRAY_ENABLE)
+			If $validator_version <> "1.2" Then
+				TrayItemSetState($runrunitem,$TRAY_ENABLE)
+			Else
+				TrayItemSetState($runrunitem,$TRAY_DISABLE)
+			EndIf
+			If $validator_version == "1.4" Then
+				TrayItemSetState($runscheditem,$TRAY_ENABLE)
+			Else
+				TrayItemSetState($runscheditem,$TRAY_DISABLE)
+			EndIf
 			$s_state= WinGetState($serv_window,"")
 			If BitAND($s_state, 2) Then
 				TrayItemSetText($consitem,"Hide Console")
@@ -372,6 +396,7 @@ While 1
 		Else
 			TrayItemSetState($runvalitem,$TRAY_DISABLE)
 			TrayItemSetState($runrunitem,$TRAY_DISABLE)
+			TrayItemSetState($runscheditem,$TRAY_DISABLE)
 			TrayItemSetText($consitem,"Start Service")
 		EndIf
 	EndIf
@@ -380,6 +405,8 @@ While 1
 			start_client()
 		Case $msg = $runrunitem
 			start_runner()
+		Case $msg = $runscheditem
+			start_scheduler()
 		Case $msg = $consitem
 			If TrayItemGetText($consitem) = "Show Console" Then
 				WinSetState($serv_window,"",@SW_SHOW)
@@ -396,7 +423,7 @@ While 1
 				start_server()
 			EndIf
 		Case $msg = $aboutitem
-			Msgbox(64, "About", $product & ", "& $version & Chr(10) & "© " & $author)
+			Msgbox(64, "About", $product & ", "& $version & Chr(10) & "© " & $author & Chr(10) & Chr(10) & "Running with NetIQ Validator v" & $validator_version)
 		Case $msg = $exititem
 			ExitLoop
 	EndSelect
